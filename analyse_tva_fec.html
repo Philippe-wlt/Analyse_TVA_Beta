@@ -389,6 +389,28 @@
     font-family: 'DM Mono', monospace;
   }
 
+  /* BANNIÈRE EXERCICE */
+  .exercice-banner {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: rgba(149,27,129,0.07);
+    border: 1px solid rgba(149,27,129,0.25);
+    border-radius: var(--radius);
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--accent2);
+    font-weight: 600;
+  }
+  .exercice-banner.visible { display: flex; }
+  .exercice-sub {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: 'DM Mono', monospace;
+  }
+
   /* FILTRE TIERS */
   .filter-bar {
     display: flex;
@@ -580,6 +602,7 @@
         <div class="upload-label">FEC — Exercice N (année en cours)</div>
         <div class="upload-hint">Fichier TXT, séparateur tabulation</div>
         <div class="upload-status hidden" id="status-n">—</div>
+        <div class="upload-status hidden" id="exercice-n" style="color:var(--accent2);font-size:11px;margin-top:4px"></div>
       </div>
       <div class="upload-zone" id="zone-n1" ondragover="dragOver(event,'zone-n1')" ondragleave="dragLeave('zone-n1')" ondrop="dropFile(event,'n1')">
         <input type="file" accept=".txt,.csv" onchange="loadFile(event,'n1')">
@@ -587,7 +610,21 @@
         <div class="upload-label">FEC — Exercice N-1 (année précédente)</div>
         <div class="upload-hint">Fichier TXT, séparateur tabulation</div>
         <div class="upload-status hidden" id="status-n1">—</div>
+        <div class="upload-status hidden" id="exercice-n1" style="color:var(--accent2);font-size:11px;margin-top:4px"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- BANNIÈRE EXERCICE DÉTECTÉ -->
+  <div class="exercice-banner" id="exercice-banner">
+    <span>📅</span>
+    <div>
+      <span id="exercice-label-n">—</span>
+      <span class="exercice-sub" id="exercice-detail-n"></span>
+    </div>
+    <div style="margin-left:32px">
+      <span id="exercice-label-n1">—</span>
+      <span class="exercice-sub" id="exercice-detail-n1"></span>
     </div>
   </div>
 
@@ -825,6 +862,9 @@ function parseFEC(text) {
   return rows;
 }
 
+// Variable globale pour stocker les dates de l'exercice en cours
+var exerciceCourant = null; // { dateDebut: 'YYYYMMDD', dateFin: 'YYYYMMDD', label: '...' }
+
 function updateStatus(which, name, count) {
   const zoneId = which === 'n' ? 'zone-n' : 'zone-n1';
   const statusId = 'status-' + which;
@@ -832,6 +872,79 @@ function updateStatus(which, name, count) {
   const st = document.getElementById(statusId);
   st.classList.remove('hidden');
   st.textContent = `✓ ${name} — ${count.toLocaleString('fr-FR')} lignes`;
+
+  // Dès que les deux FEC sont chargés, détecter l'exercice
+  if (rawN && rawN1) detecterExercice();
+}
+
+function detecterExercice() {
+  // ── 1. Dernier mois du FEC N-1 ──
+  var datesN1 = rawN1.map(r => (r['EcritureDate'] || '')).filter(Boolean).sort();
+  if (!datesN1.length) return;
+  var lastDateN1 = datesN1[datesN1.length - 1];
+  var lastMonthN1 = lastDateN1.substring(4, 6); // MM
+  var lastYearN1  = parseInt(lastDateN1.substring(0, 4));
+
+  // ── 2. Dernier mois du FEC N-1 pour libellé N-1 ──
+  var firstDateN1 = datesN1[0];
+  var labelN1;
+  if (lastMonthN1 === '12') {
+    labelN1 = 'Exercice N-1 : ' + lastYearN1;
+  } else {
+    var mDeb1 = parseInt(firstDateN1.substring(4,6));
+    var yDeb1 = parseInt(firstDateN1.substring(0,4));
+    labelN1 = 'Exercice N-1 : ' + yDeb1 + '/' + lastYearN1;
+  }
+
+  // ── 3. Calcul de l'exercice en cours ──
+  var dateDebut, dateFin, labelN, labelNDetail;
+  if (lastMonthN1 === '12') {
+    // Exercice civil
+    var exYear = lastYearN1 + 1;
+    dateDebut = '' + exYear + '0101';
+    dateFin   = '' + exYear + '1231';
+    labelN    = 'Exercice en cours : ' + exYear;
+    labelNDetail = '01/01/' + exYear + ' → 31/12/' + exYear;
+  } else {
+    // Exercice à cheval
+    var startMonth = (parseInt(lastMonthN1) % 12) + 1;
+    var startYear  = startMonth === 1 ? lastYearN1 + 1 : lastYearN1;
+    var endMonth   = parseInt(lastMonthN1);
+    var endYear    = startYear + 1;
+    var smStr = ('0' + startMonth).slice(-2);
+    var emStr = ('0' + endMonth).slice(-2);
+    var lastDay = new Date(endYear, endMonth, 0).getDate();
+    dateDebut = '' + startYear + smStr + '01';
+    dateFin   = '' + endYear  + emStr + ('0' + lastDay).slice(-2);
+    labelN    = 'Exercice en cours : ' + startYear + '/' + endYear;
+    labelNDetail = smStr + '/' + startYear + ' → ' + emStr + '/' + endYear;
+  }
+
+  // ── 4. Fin réelle = dernier jour avec écriture dans FEC N ──
+  var datesN = rawN.map(r => (r['EcritureDate'] || '')).filter(function(d) {
+    return d >= dateDebut && d <= dateFin;
+  }).sort();
+  var dernierJour = datesN.length ? datesN[datesN.length - 1] : dateFin;
+  var djFmt = dernierJour.substring(6,8) + '/' + dernierJour.substring(4,6) + '/' + dernierJour.substring(0,4);
+  labelNDetail += '  (dernière écriture : ' + djFmt + ')';
+
+  exerciceCourant = { dateDebut: dateDebut, dateFin: dernierJour, label: labelN };
+
+  // ── 5. Affichage dans les zones d'upload ──
+  var elN  = document.getElementById('exercice-n');
+  var elN1 = document.getElementById('exercice-n1');
+  if (elN)  { elN.textContent  = labelN + ' | ' + labelNDetail; elN.classList.remove('hidden'); }
+  if (elN1) { elN1.textContent = labelN1; elN1.classList.remove('hidden'); }
+
+  // ── 6. Bannière globale ──
+  var banner = document.getElementById('exercice-banner');
+  if (banner) banner.classList.add('visible');
+  var lblN   = document.getElementById('exercice-label-n');
+  var dtlN   = document.getElementById('exercice-detail-n');
+  var lblN1  = document.getElementById('exercice-label-n1');
+  if (lblN)  lblN.textContent  = labelN;
+  if (dtlN)  dtlN.textContent  = '  ' + labelNDetail;
+  if (lblN1) lblN1.textContent = labelN1;
 }
 
 // =============================================
@@ -1055,11 +1168,25 @@ function calculerAnalyse(jAN, jACH, jVEN) {
   });
   log('Etape 6/8 : ' + Object.keys(tauxStdMap).length + ' tiers');
 
+  // ── Filtrage sur l'exercice en cours ──
+  // Les écritures N-1 restent pour le calcul des taux standards (déjà fait)
+  // mais sont exclues des résultats affichés
+  var ecrituresExo = ecritures;
+  if (exerciceCourant) {
+    var dD = exerciceCourant.dateDebut;
+    var dF = exerciceCourant.dateFin;
+    ecrituresExo = ecritures.filter(function(e) {
+      return e.ecritureDate >= dD && e.ecritureDate <= dF;
+    });
+    log('Etape 6b/8 : ' + ecrituresExo.length + ' ecritures sur exercice courant ('
+      + dD + ' → ' + dF + ')');
+  }
+
   log('Etape 7/8 : Anomalies...');
   var jACHSet = new Set(jACH);
   var jVENSet = new Set(jVEN);
 
-  var erreursTaux = ecritures.filter(function(e) {
+  var erreursTaux = ecrituresExo.filter(function(e) {
     if (e.tauxApplique === null) return false;
     var k = e.compAuxLib || '(sans nom)';
     var std = tauxStdMap[k];
@@ -1069,14 +1196,14 @@ function calculerAnalyse(jAN, jACH, jVEN) {
     return e.tauxApplique !== std && ecart >= 1 && bonJournal;
   });
 
-  var inversees = ecritures.filter(function(e) {
+  var inversees = ecrituresExo.filter(function(e) {
     var bonJournal = (e.isClient && jVENSet.has(e.journal)) || (e.isFourn && jACHSet.has(e.journal));
     return e.estInversee && bonJournal;
   });
   log('Etape 7/8 : ' + erreursTaux.length + ' erreurs taux, ' + inversees.length + ' inversees');
 
   return {
-    ecritures: ecritures, erreursTaux: erreursTaux, inversees: inversees,
+    ecritures: ecrituresExo, erreursTaux: erreursTaux, inversees: inversees,
     tauxStdMap: tauxStdMap, tiersTaux: tiersTaux
   };
 }
