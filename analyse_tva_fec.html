@@ -1458,15 +1458,18 @@ function afficherResultats(ecritures, erreursTaux, inversees, tauxStdMap, tiersT
 
     // Tableau simple : ligne parent = résumé, lignes enfants = détail par opération
     // Colonnes : Date | N° écriture | Tiers | HT | TVA | TTC | Taux appl.
+    // 8 colonnes alignées : Tiers | Taux std | Taux hors std | Nb std | Total | Date | N°écr | Taux appl | Lignes FEC
+    var NCOLS = 9;
     var html = '<div class="table-wrap"><table class="tree-table" style="table-layout:fixed;width:100%"><thead><tr>'
-      + '<th style="width:12%">Date</th>'
-      + '<th style="width:18%">N° écriture</th>'
-      + '<th style="width:20%">Tiers</th>'
-      + '<th style="width:10%;text-align:right">HT</th>'
-      + '<th style="width:10%;text-align:right">TVA</th>'
-      + '<th style="width:10%;text-align:right">TTC</th>'
-      + '<th style="width:10%;text-align:right">Taux appl.</th>'
-      + '<th style="width:10%;text-align:right">Nb écrit.</th>'
+      + '<th style="width:26%">Tiers</th>'
+      + '<th style="width:10%;text-align:right">Taux standard</th>'
+      + '<th style="width:18%">Taux hors standard</th>'
+      + '<th style="width:10%;text-align:right">Nb op. std</th>'
+      + '<th style="width:10%;text-align:right">Total op.</th>'
+      + '<th style="width:9%"></th>'
+      + '<th style="width:7%"></th>'
+      + '<th style="width:6%"></th>'
+      + '<th style="width:4%"></th>'
       + '</tr></thead><tbody>';
 
     tiersList.forEach(function(kv, ri) {
@@ -1480,29 +1483,44 @@ function afficherResultats(ecritures, erreursTaux, inversees, tauxStdMap, tiersT
         .join(', ');
       var totalEcr = Object.values(tObj).reduce(function(s, a) { return s + a.length; }, 0);
 
-      // Ligne parent : résumé sur toute la largeur
       var autresTxt = autresTaux
         ? '<span style="color:var(--warning)">' + autresTaux + '</span>'
-        : '<span style="color:var(--success)">— std seul</span>';
+        : '<span style="color:var(--success);font-size:11px">aucun</span>';
 
       html += '<tr class="tree-row-parent" data-wrap="' + wrapperId + '" data-row="' + ri + '" onclick="toggleTiersStd(this)">'
-        + '<td colspan="2"><div class="tiers-name"><span class="toggle-btn">&#9654;</span><strong>' + tierNom + '</strong></div></td>'
+        + '<td><div class="tiers-name"><span class="toggle-btn">&#9654;</span><strong>' + tierNom + '</strong></div></td>'
+        + '<td style="text-align:right;color:var(--accent2);font-weight:700">' + (std !== null ? std + '%' : '—') + '</td>'
         + '<td>' + autresTxt + '</td>'
-        + '<td style="text-align:right;color:var(--accent2);font-weight:700">' + std + '%</td>'
-        + '<td style="text-align:right;color:var(--text-muted)">std: ' + nbStd + '</td>'
-        + '<td style="text-align:right;color:var(--text-muted)">total: ' + totalEcr + '</td>'
-        + '<td style="text-align:right"></td>'
-        + '<td style="text-align:right;color:var(--text-muted)">' + totalEcr + ' ▼</td>'
+        + '<td style="text-align:right;color:var(--text-muted)">' + nbStd + '</td>'
+        + '<td style="text-align:right;color:var(--text-muted)">' + totalEcr + '</td>'
+        + '<td colspan="4" style="text-align:center;color:var(--accent);font-size:11px">' + totalEcr + ' opération' + (totalEcr > 1 ? 's' : '') + ' ▾</td>'
         + '</tr>';
 
-      // Toutes les écritures triées par date
-      var toutesLignes = [];
+      // Toutes les écritures triées : d'abord au taux standard, puis hors standard
+      var lignesStd = [];
+      var lignesHors = [];
       Object.keys(tObj).forEach(function(t) {
-        tObj[t].forEach(function(e) { toutesLignes.push({ e: e, tStr: t }); });
+        tObj[t].forEach(function(e) {
+          if (parseFloat(t) === std) lignesStd.push({ e: e, tStr: t });
+          else lignesHors.push({ e: e, tStr: t });
+        });
       });
-      toutesLignes.sort(function(a, b) {
-        return (a.e.ecritureDate || '').localeCompare(b.e.ecritureDate || '');
-      });
+      var triDate = function(a, b) { return (a.e.ecritureDate || '').localeCompare(b.e.ecritureDate || ''); };
+      lignesStd.sort(triDate);
+      lignesHors.sort(triDate);
+      var toutesLignes = lignesStd.concat(lignesHors);
+
+      // Sous-en-tête des colonnes de détail — classe det-header-row (pas fec-header-row)
+      html += '<tr class="tree-row-child det-header-row" data-wrap="' + wrapperId + '" data-row="' + ri + '" style="display:none;background:rgba(237,105,75,0.08)">'
+        + '<td colspan="2" style="padding-left:32px;font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">Date — N° écriture</td>'
+        + '<td style="font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">Tiers</td>'
+        + '<td style="text-align:right;font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">HT</td>'
+        + '<td style="text-align:right;font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">TVA</td>'
+        + '<td style="text-align:right;font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">TTC</td>'
+        + '<td style="text-align:right;font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">Taux</td>'
+        + '<td style="text-align:center;font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">Ecrit.</td>'
+        + '<td style="font-weight:700;color:var(--accent);font-size:10px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid rgba(237,105,75,0.3)">Lignes</td>'
+        + '</tr>';
 
       toutesLignes.forEach(function(item, li) {
         var e = item.e;
@@ -1525,23 +1543,23 @@ function afficherResultats(ecritures, erreursTaux, inversees, tauxStdMap, tiersT
           + '</tr>';
 
         if (hasFec) {
-          // En-tête colonnes FEC
+          // Sous-en-tête colonnes FEC
           html += '<tr class="fec-header-row tree-row-child" data-wrap="' + wrapperId + '" data-row="' + ri + '" id="' + fecId + '-hdr" style="display:none">'
-            + '<td colspan="2" style="padding-left:48px">CompteNum — CompteLib</td>'
-            + '<td>CompAuxNum</td>'
-            + '<td colspan="2">CompAuxLib</td>'
-            + '<td style="text-align:right">Débit</td>'
-            + '<td style="text-align:right">Crédit</td>'
+            + '<td colspan="3" style="padding-left:48px;font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:1px">CompteNum — CompteLib</td>'
+            + '<td style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:1px">CompAuxNum</td>'
+            + '<td colspan="2" style="font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:1px">CompAuxLib</td>'
+            + '<td style="text-align:right;font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:1px">Débit</td>'
+            + '<td style="text-align:right;font-size:10px;color:var(--accent2);font-weight:700;text-transform:uppercase;letter-spacing:1px">Crédit</td>'
             + '<td></td>'
             + '</tr>';
           // Lignes FEC
           e.lignes.forEach(function(fl, fli) {
             html += '<tr class="fec-row tree-row-child" data-wrap="' + wrapperId + '" data-row="' + ri + '" id="' + fecId + '-' + fli + '" style="display:none">'
-              + '<td colspan="2" style="padding-left:48px">' + (fl['CompteNum'] || '') + ' — ' + (fl['CompteLib'] || '') + '</td>'
-              + '<td>' + (fl['CompAuxNum'] || '') + '</td>'
-              + '<td colspan="2">' + (fl['CompAuxLib'] || '') + '</td>'
-              + '<td class="num" style="text-align:right">' + (fl['Debit'] || '0') + '</td>'
-              + '<td class="num" style="text-align:right">' + (fl['Credit'] || '0') + '</td>'
+              + '<td colspan="3" style="padding-left:48px;font-size:11px">' + (fl['CompteNum'] || '') + ' — ' + (fl['CompteLib'] || '') + '</td>'
+              + '<td style="font-size:11px">' + (fl['CompAuxNum'] || '') + '</td>'
+              + '<td colspan="2" style="font-size:11px">' + (fl['CompAuxLib'] || '') + '</td>'
+              + '<td class="num" style="text-align:right;font-size:11px">' + (fl['Debit'] || '0') + '</td>'
+              + '<td class="num" style="text-align:right;font-size:11px">' + (fl['Credit'] || '0') + '</td>'
               + '<td></td>'
               + '</tr>';
           });
@@ -1805,7 +1823,7 @@ function toggleTiersStd(parentRow) {
   if (!isOpen) {
     parentRow.classList.add('open');
     tbody.querySelectorAll('.tree-row-child[data-wrap="' + wrap + '"][data-row="' + row + '"]').forEach(r => {
-      // N'afficher que les lignes directes (pas les FEC imbriquées)
+      // Afficher sous-en-tête détail et lignes écriture, mais pas les FEC imbriquées
       if (!r.classList.contains('fec-row') && !r.classList.contains('fec-header-row')) {
         r.style.display = 'table-row';
       }
